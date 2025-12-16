@@ -1,0 +1,73 @@
+{
+  "entry": {
+    "moisture": {
+      "min": 54.0,
+      "max": 57.0,
+      "enabled": true
+    },
+    "alcohol": {
+      "min": null,
+      "max": 3.0,
+      "enabled": false
+    },
+    "acidity": {
+      "min": 0.0,
+      "max": 2.5,
+      "enabled": true
+    },
+    "starch": {
+      "min": 17.0,
+      "max": 22.0,
+      "enabled": true
+    },
+    "sugar": {
+      "min": 0.0,
+      "max": 3.0,
+      "enabled": true
+    }
+  },
+  "exit": {
+    "moisture": {
+      "min": 58.0,
+      "max": 62.0,
+      "enabled": true
+    },
+    "alcohol": {
+      "min": null,
+      "max": null,
+      "enabled": false
+    },
+    "acidity": {
+      "min": 0.0,
+      "max": 4.0,
+      "enabled": true
+    },
+    "starch": {
+      "min": null,
+      "max": 12.0,
+      "enabled": true
+    },
+    "sugar": {
+      "min": null,
+      "max": 1.5,
+      "enabled": true
+    }
+  },
+  "temperature": {
+    "grains_entry_temp": {
+      "min": 18.0,
+      "max": 22.0,
+      "enabled": true
+    },
+    "temp_rise_range": {
+      "min": 8.0,
+      "max": 15.0,
+      "enabled": true
+    },
+    "distillation_temp": {
+      "min": 18.0,
+      "max": 30.0,
+      "enabled": true
+    }
+  }
+}
