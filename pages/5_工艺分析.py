@@ -35,14 +35,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# 侧边栏标题
-with st.sidebar:
-    st.markdown("# 📊 工艺分析")
-    #st.markdown("---")
-
-# 主标题
-# st.title("📊 工艺分析")
-
 # 检查工艺标准是否已设置
 standards = load_process_standards()
 
@@ -62,9 +54,9 @@ except Exception as e:
     st.error(f"❌ 加载筛选选项失败: {str(e)}")
     st.stop()
 
-# 渲染筛选UI
-with st.container():
-    filters, submit_button = render_filter_ui(filter_options)
+# 在侧边栏渲染筛选UI
+with st.sidebar:
+    filters, submit_button = render_filter_ui(filter_options, sidebar=True)
 
 # 应用筛选并加载数据
 if submit_button or st.session_state.filter_applied:
@@ -96,21 +88,6 @@ if submit_button or st.session_state.filter_applied:
             if df.empty:
                 st.warning("⚠️ 没有符合条件的数据,请调整筛选条件")
             else:
-                # 在侧边栏显示筛选摘要
-                with st.sidebar:
-                    st.markdown("### 📋 当前筛选条件")
-                    filter_summary = build_filter_summary(validated_filters)
-                    st.info(filter_summary)
-                    
-                    #st.markdown("---")
-                    st.markdown("### 📈 数据概览")
-                    
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.metric("总记录数", f"{len(df):,}")
-                    with col2:
-                        unique_pits = df['pit_no'].nunique()
-                        st.metric("窖池数", f"{unique_pits}")
                 
                 # ==================== 整体合格率概览 ====================
                 #st.markdown("---")

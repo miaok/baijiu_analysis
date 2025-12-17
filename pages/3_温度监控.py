@@ -38,14 +38,9 @@ st.set_page_config(
     layout="wide"
 )
 
-# 侧边栏标题
-with st.sidebar:
-    st.markdown("# 🌡️ 温度数据分析")
-    st.markdown("---")
-
 # 初始化session state
-if 'temp_filter_applied' not in st.session_state:
-    st.session_state.temp_filter_applied = True  # 默认加载所有数据
+if 'filter_applied' not in st.session_state:
+    st.session_state.filter_applied = True  # 默认加载所有数据
 
 # 获取筛选选项
 try:
@@ -54,17 +49,17 @@ except Exception as e:
     st.error(f"❌ 加载筛选选项失败: {str(e)}")
     st.stop()
 
-with st.container():
-    # 渲染筛选UI组件并获取筛选条件
-    filters, submit_button = render_filter_ui(filter_options)
+# 在侧边栏渲染筛选UI组件
+with st.sidebar:
+    filters, submit_button = render_filter_ui(filter_options, sidebar=True)
 
 # ==================== 应用筛选并加载数据 ====================
-if submit_button or st.session_state.temp_filter_applied:
+if submit_button or st.session_state.filter_applied:
     # 验证筛选条件（filters已经由render_filter_ui返回）
     validated_filters = validate_filter_conditions(filters)
 
     # 标记筛选已应用
-    st.session_state.temp_filter_applied = True
+    st.session_state.filter_applied = True
     
     # 加载数据
     with st.spinner("正在加载数据..."):
@@ -74,43 +69,6 @@ if submit_button or st.session_state.temp_filter_applied:
             if df.empty:
                 st.warning("⚠️ 没有符合条件的数据，请调整筛选条件")
             else:
-                # 在侧边栏显示筛选摘要和数据概览
-                with st.sidebar:
-                    st.markdown("### 📋 当前筛选条件")
-                    filter_summary = build_filter_summary(validated_filters)
-                    st.info(filter_summary)
-                    
-                    st.markdown("---")
-                    st.markdown("### 📈 数据概览")
-                    
-                    # 2x2 布局显示数据概览
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.metric("总记录数", f"{len(df):,}")
-                    with col2:
-                        unique_rounds = df['round_number'].nunique()
-                        st.metric("轮次", f"{unique_rounds}")
-                    
-                    col3, col4 = st.columns(2)
-                    with col3:
-                        unique_pits = df['pit_no'].nunique()
-                        st.metric("窖池", f"{unique_pits}")
-                    with col4:
-                        unique_dates = df['production_date'].nunique()
-                        st.metric("日期", f"{unique_dates}")
-                    
-                    # 统计数据
-                    st.markdown("---")
-                    st.markdown("### 📊 统计信息")
-                    
-                    # 平均顶温
-                    avg_peak = df['temp_peak'].mean()
-                    st.metric("平均顶温(℃)", f"{avg_peak:.1f}" if pd.notna(avg_peak) else "无数据")
-                    
-                    # 平均达到顶温天数
-                    avg_days = df['days_to_peak'].mean()
-                    st.metric("平均达顶天数", f"{avg_days:.1f}" if pd.notna(avg_days) else "无数据")
-
                 
                 # 数据展示（主区域）
                 st.markdown("---")
@@ -119,7 +77,7 @@ if submit_button or st.session_state.temp_filter_applied:
                 # 选择显示模式
                 display_mode = st.radio(
                     "选择显示模式",
-                    ["温度参数", "温度曲线"],
+                    ["工艺参数", "温度曲线"],
                     horizontal=True,
                     label_visibility="collapsed"
                 )
@@ -127,41 +85,16 @@ if submit_button or st.session_state.temp_filter_applied:
                 # 使用配置文件中的列名映射
                 column_names_cn = TEMPERATURE_COLUMNS_CN
                 
-                if display_mode == "温度参数":
+                if display_mode == "工艺参数":
                     # 表格模式：显示工艺参数
                     
-                    # 在完整数据模式下，提供额外列的显示选项
-                    optional_columns_en = ['fiscal_year', 'work_year', 'workshop', 'team_name']
-                    optional_columns_cn = [column_names_cn.get(col, col) for col in optional_columns_en if col in df.columns]
-                    
-                    show_extra_cols = []
-                    if optional_columns_cn:
-                        # 添加列显示控制选项
-                        with st.expander("⚙️ 显示额外列", expanded=False):
-                            show_extra_cols = st.multiselect(
-                                "选择要显示的额外列",
-                                options=optional_columns_cn,
-                                default=[],  # 默认不显示任何额外列
-                                help="这些列默认隐藏，可根据需要选择显示",
-                                key="temp_extra_cols"
-                            )
-                    
-                    # 先确定要显示的英文列名
-                    # 核心列的英文名
+                    # 核心列的英文名（调整顺序：生产日期、班组、轮次、窖池、工艺参数）
                     core_columns_en = [
-                        'production_date', 'round_number', 'pit_no',
+                        'production_date', 'team_name', 'round_number', 'pit_no',
                         'temp_peak', 'days_to_peak', 'peak_duration', 'temp_rise_range', 'temp_end',
                         'starter_activation_temp', 'grains_entry_temp', 'distillation_temp'
                     ]
                     display_columns_en = [col for col in core_columns_en if col in df.columns]
-                    
-                    # 添加用户选择的可选列（转换回英文）
-                    if show_extra_cols:
-                        cn_to_en = {v: k for k, v in column_names_cn.items()}
-                        for cn_col in show_extra_cols:
-                            en_col = cn_to_en.get(cn_col)
-                            if en_col and en_col in df.columns and en_col not in display_columns_en:
-                                display_columns_en.append(en_col)
                     
                     # 选择列并翻译
                     display_df = df[display_columns_en].copy()
@@ -170,7 +103,7 @@ if submit_button or st.session_state.temp_filter_applied:
                     # 显示数据表格（使用中文列名）
                     st.dataframe(
                         display_df,
-                        width='stretch',
+                        use_container_width=True,
                         height=500,
                         hide_index=True
                     )
@@ -228,16 +161,29 @@ if submit_button or st.session_state.temp_filter_applied:
                         if 'temp_widget_key' not in st.session_state:
                             st.session_state.temp_widget_key = 0
                         
+                        # 验证并过滤默认选择，确保所有默认选项都在当前可用选项中
+                        valid_default_selection = [
+                            task for task in st.session_state.temp_default_selection 
+                            if task in task_options
+                        ]
+                        
+                        # 如果过滤后没有有效选项，使用前5个可用选项
+                        if not valid_default_selection:
+                            valid_default_selection = task_options[:min(5, len(task_options))]
+                        
+                        # 更新session state为有效的默认选择
+                        st.session_state.temp_default_selection = valid_default_selection
+                        
                         # 选择器和随机按钮布局
                         col_select, col_random = st.columns([4, 1])
                         
                         with col_random:
                             st.write("")  # 占位对齐
                             st.write("")
-                            if st.button("🎲 随机5条", use_container_width=True, help="随机选择5条温度曲线"):
+                            if st.button("🎲 随机5条", use_container_width=True):
                                 import random
                                 random_count = min(5, len(task_options))
-                                # 更新默认选择
+                                # 更新默认选择为当前可用选项中的随机5条
                                 st.session_state.temp_default_selection = random.sample(task_options, random_count)
                                 # 更新widget key以强制重新渲染
                                 st.session_state.temp_widget_key += 1

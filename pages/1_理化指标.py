@@ -40,11 +40,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# 侧边栏标题
-with st.sidebar:
-    st.markdown("# 🧪 理化指标分析")
-    st.markdown("---")
-
 # 初始化session state
 if 'filter_applied' not in st.session_state:
     st.session_state.filter_applied = True  # 默认加载所有数据
@@ -56,9 +51,12 @@ except Exception as e:
     st.error(f"❌ 加载筛选选项失败: {str(e)}")
     st.stop()
 
-with st.container():
-    # 渲染筛选UI组件并获取筛选条件
-    filters, submit_button = render_filter_ui(filter_options)
+# 在侧边栏渲染筛选UI组件
+with st.sidebar:
+    filters, submit_button = render_filter_ui(filter_options, sidebar=True)
+
+# 创建主内容区域的占位符
+main_placeholder = st.empty()
 
 # ==================== 应用筛选并加载数据 ====================
 if submit_button or st.session_state.filter_applied:
@@ -73,47 +71,22 @@ if submit_button or st.session_state.filter_applied:
         try:
             df = get_physicochemical_data(validated_filters if validated_filters else None)
             
-            if df.empty:
-                st.warning("⚠️ 没有符合条件的数据，请调整筛选条件")
-            else:
-                # 在侧边栏显示筛选摘要和数据概览
-                with st.sidebar:
-                    st.markdown("### 📋 当前筛选条件")
-                    filter_summary = build_filter_summary(validated_filters)
-                    st.info(filter_summary)
-                    
+            # 使用占位符渲染内容
+            with main_placeholder.container():
+                if df.empty:
+                    st.warning("⚠️ 没有符合条件的数据，请调整筛选条件")
+                else:
+                    # 数据表格展示（主区域）
                     st.markdown("---")
-                    st.markdown("### 📈 数据概览")
+                    st.subheader("🧪 理化指标分析")
                     
-                    # 2x2 布局显示数据概览
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.metric("总记录数", f"{len(df):,}")
-                    with col2:
-                        unique_rounds = df['round_number'].nunique()
-                        st.metric("轮次", f"{unique_rounds}")
-                    
-                    col3, col4 = st.columns(2)
-                    with col3:
-                        unique_pits = df['pit_no'].nunique()
-                        st.metric("窖池", f"{unique_pits}")
-                    with col4:
-                        unique_dates = df['production_date'].nunique()
-                        st.metric("日期", f"{unique_dates}")
-
-                
-                # 数据表格展示（主区域）
-
-                # st.markdown("---")
-                # st.subheader("📊 理化指标数据")
-                
-                # 选择显示模式
-                display_mode = st.radio(
-                    "选择显示模式",
-                    ["完整数据", "数据汇总"],
-                    horizontal=True,
-                    label_visibility="collapsed"
-                )
+                    # 选择显示模式
+                    display_mode = st.radio(
+                        "选择显示模式",
+                        ["完整数据", "数据汇总"],
+                        horizontal=True,
+                        label_visibility="collapsed"
+                    )
                 
                 # ==================== 数据汇总模式 ====================
                 if display_mode == "数据汇总":
@@ -125,7 +98,7 @@ if submit_button or st.session_state.filter_applied:
                     
                     with col1:
                         layer_option = st.selectbox(
-                            "层次维度",
+                            "层次",
                             ["全部", "上层", "下层"],
                             key="layer_dimension",
                             help="选择要汇总的层次数据"
@@ -133,7 +106,7 @@ if submit_button or st.session_state.filter_applied:
                     
                     with col2:
                         direction_option = st.selectbox(
-                            "出入池维度",
+                            "出入池",
                             ["全部", "入池", "出池"],
                             key="direction_dimension",
                             help="选择要汇总的出入池数据"
@@ -155,19 +128,18 @@ if submit_button or st.session_state.filter_applied:
                             help="显示所有统计指标(平均值、最大值、最小值等)"
                         )
                     
-                    # st.markdown("---")
-                    
                     # 分组选项
                     with st.expander("🔧 高级选项 - 分组汇总", expanded=False):
-                        st.markdown("**选择分组维度** (可选,不选则显示整体汇总)")
-                        
-                        group_col1, group_col2 = st.columns(2)
+                                                
+                        group_col1, group_col2, group_col3, group_col4 = st.columns(4)
                         
                         with group_col1:
                             group_by_round = st.checkbox("按轮次分组", value=False)
-                            group_by_workshop = st.checkbox("按车间分组", value=False)
                         with group_col2:
+                            group_by_workshop = st.checkbox("按车间分组", value=False)
+                        with group_col3:
                             group_by_team = st.checkbox("按班组分组", value=False)
+                        with group_col4:
                             group_by_pit = st.checkbox("按窖池分组", value=False)
                         
                         # 构建分组字段列表
@@ -306,7 +278,7 @@ if submit_button or st.session_state.filter_applied:
                     with col_filter1:
                         # 层次筛选
                         layer_filter = st.selectbox(
-                            "层次维度",
+                            "层次",
                             ["全部", "上层", "下层"],
                             key="complete_layer_filter",
                             help="选择要显示的层次数据"
@@ -315,14 +287,14 @@ if submit_button or st.session_state.filter_applied:
                     with col_filter2:
                         # 出入池筛选
                         direction_filter = st.selectbox(
-                            "出入池维度",
+                            "出入池",
                             ["全部", "入池", "出池"],
                             key="complete_direction_filter",
                             help="选择要显示的出入池数据"
                         )
                     
                     # 根据筛选条件构建显示列
-                    display_columns = ['production_date', 'round_number', 'pit_no']
+                    display_columns = ['production_date', 'team_name', 'round_number', 'pit_no']
                     
                     # 指标列表
                     indicators = ['moisture', 'alcohol', 'acidity', 'starch', 'sugar']
@@ -383,11 +355,31 @@ if submit_button or st.session_state.filter_applied:
                     # 重命名列为中文
                     display_df.rename(columns=column_names_cn, inplace=True)
 
+                    # 配置列固定
+                    column_config = {
+                        '生产日期': st.column_config.TextColumn(
+                            '生产日期',
+                            pinned=True
+                        ),
+                        '班组': st.column_config.TextColumn(
+                            '班组',
+                            pinned=True
+                        ),
+                        '轮次': st.column_config.NumberColumn(
+                            '轮次',
+                            pinned=True
+                        ),
+                        '窖池': st.column_config.TextColumn(
+                            '窖池',
+                            pinned=True
+                        ),
+                    }
                     
                     # 显示数据表格（使用中文列名）
                     st.dataframe(
                         display_df,
-                        width='stretch',
+                        column_config=column_config,
+                        use_container_width=True,
                         height=500,
                         hide_index=True
                     )

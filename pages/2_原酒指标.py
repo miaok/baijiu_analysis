@@ -36,14 +36,9 @@ st.set_page_config(
     layout="wide"
 )
 
-# 侧边栏标题
-with st.sidebar:
-    st.markdown("# 🍶 原酒指标分析")
-    st.markdown("---")
-
 # 初始化session state
-if 'liquor_filter_applied' not in st.session_state:
-    st.session_state.liquor_filter_applied = True  # 默认加载所有数据
+if 'filter_applied' not in st.session_state:
+    st.session_state.filter_applied = True  # 默认加载所有数据
 
 # 获取筛选选项
 try:
@@ -52,17 +47,17 @@ except Exception as e:
     st.error(f"❌ 加载筛选选项失败: {str(e)}")
     st.stop()
 
-with st.container():
-    # 渲染筛选UI组件并获取筛选条件
-    filters, submit_button = render_filter_ui(filter_options)
+# 在侧边栏渲染筛选UI组件
+with st.sidebar:
+    filters, submit_button = render_filter_ui(filter_options, sidebar=True)
 
 # ==================== 应用筛选并加载数据 ====================
-if submit_button or st.session_state.liquor_filter_applied:
+if submit_button or st.session_state.filter_applied:
     # 验证筛选条件（filters已经由render_filter_ui返回）
     validated_filters = validate_filter_conditions(filters)
 
     # 标记筛选已应用
-    st.session_state.liquor_filter_applied = True
+    st.session_state.filter_applied = True
     
     # 加载数据
     with st.spinner("正在加载数据..."):
@@ -72,46 +67,6 @@ if submit_button or st.session_state.liquor_filter_applied:
             if df.empty:
                 st.warning("⚠️ 没有符合条件的数据，请调整筛选条件")
             else:
-                # 在侧边栏显示筛选摘要和数据概览
-                with st.sidebar:
-                    st.markdown("### 📋 当前筛选条件")
-                    filter_summary = build_filter_summary(validated_filters)
-                    st.info(filter_summary)
-                    
-                    st.markdown("---")
-                    st.markdown("### 📈 数据概览")
-                    
-                    # 2x2 布局显示数据概览
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.metric("总记录数", f"{len(df):,}")
-                    with col2:
-                        unique_rounds = df['round_number'].nunique()
-                        st.metric("轮次", f"{unique_rounds}")
-                    
-                    col3, col4 = st.columns(2)
-                    with col3:
-                        unique_pits = df['pit_no'].nunique()
-                        st.metric("窖池", f"{unique_pits}")
-                    with col4:
-                        unique_dates = df['production_date'].nunique()
-                        st.metric("日期", f"{unique_dates}")
-                    
-                    # 统计数据
-                    st.markdown("---")
-                    st.markdown("### 📊 统计信息")
-                    
-                    # 总产量统计
-                    total_quantity = df['quantity_kg'].sum()
-                    st.metric("总产量(Kg)", f"{total_quantity:,.0f}" if pd.notna(total_quantity) else "无数据")
-                    
-                    # 加权平均己酸乙酯
-                    weighted_sum = (df['quantity_kg'] * df['ethyl_hexanoate']).sum()
-                    total_qty = df['quantity_kg'].sum()
-                    avg_ethyl = weighted_sum / total_qty if total_qty > 0 else 0
-                    st.metric("平均己酸乙酯(g/L)", f"{avg_ethyl:.2f}" if pd.notna(avg_ethyl) and avg_ethyl > 0 else "无数据")
-
-
                 
                 # 数据表格展示(主区域)
                 st.markdown("---")
@@ -131,10 +86,9 @@ if submit_button or st.session_state.liquor_filter_applied:
                 # 根据显示模式处理数据
                 if display_mode == "数据汇总":
                     # ==================== 数据汇总模式 ====================
-                    st.markdown("### 📊 数据汇总分析")
-                    
+                  
                     # 汇总维度和统计方法选择
-                    col1, col2, col3 = st.columns([2, 2, 2])
+                    col1, col2, col3, col4 = st.columns([2, 2, 2, 1.5])
                     
                     with col1:
                         # 主要汇总维度
@@ -145,25 +99,30 @@ if submit_button or st.session_state.liquor_filter_applied:
                         )
                     
                     with col2:
-                        # 次要汇总维度(可选)
+                        # 次要汇总维度(可选) - 动态排除主要维度
+                        available_secondary = ["无"] + [d for d in ["车间", "班组", "窖池", "轮次", "段次"] if d != primary_dimension]
                         secondary_dimension = st.selectbox(
                             "次要汇总维度(可选)",
-                            ["无", "车间", "班组", "窖池", "轮次", "段次"],
+                            available_secondary,
                             key="secondary_dimension"
                         )
                     
                     with col3:
-                        # 统计方法
+                        # 统计方法（添加记录次数）
                         agg_method = st.selectbox(
                             "统计方法",
-                            ["平均值", "最大值", "最小值", "中位数", "标准差", "总和"],
+                            ["平均值", "最大值", "最小值", "中位数", "标准差", "总和", "记录次数"],
                             key="agg_method"
                         )
                     
-                    # 高级选项
-                    with st.expander("🔧 高级选项", expanded=False):
-                        show_count = st.checkbox("显示记录次数", value=True, key="show_count")
-                        show_all_stats = st.checkbox("显示全部统计指标", value=False, key="show_all_stats_liquor")
+                    with col4:
+                        # 显示全部统计指标
+                        show_all_stats = st.checkbox(
+                            "显示全部统计指标", 
+                            value=False, 
+                            key="show_all_stats_liquor",
+                            help="显示所有统计指标(平均值、最大值、最小值等)"
+                        )
                     
                     # 维度映射
                     dimension_map = {
@@ -181,13 +140,15 @@ if submit_button or st.session_state.liquor_filter_applied:
                         "最小值": "min",
                         "中位数": "median",
                         "标准差": "std",
-                        "总和": "sum"
+                        "总和": "sum",
+                        "记录次数": "count"
                     }
                     
                     # 构建分组字段列表
                     group_by_fields = [dimension_map[primary_dimension]]
                     if secondary_dimension != "无":
                         group_by_fields.append(dimension_map[secondary_dimension])
+                    
                     
                     # 检查字段是否存在
                     existing_group_fields = [f for f in group_by_fields if f in df.columns]
@@ -200,13 +161,16 @@ if submit_button or st.session_state.liquor_filter_applied:
                             # 准备数据
                             df_temp = df.copy()
                             
-                            # 对于产量,总是使用sum
-                            # 对于己酸乙酯,使用加权平均
+                            # 计算己酸乙酯加权平均所需的辅助列
+                            if 'quantity_kg' in df_temp.columns and 'ethyl_hexanoate' in df_temp.columns:
+                                df_temp['ethyl_weighted'] = df_temp['quantity_kg'] * df_temp['ethyl_hexanoate']
+                            
                             if show_all_stats:
                                 # 显示全部统计指标
                                 agg_dict = {
                                     'quantity_kg': ['sum', 'mean', 'max', 'min', 'median', 'std', 'count'],
-                                    'ethyl_hexanoate': ['mean', 'max', 'min', 'median', 'std']
+                                    'ethyl_hexanoate': ['max', 'min', 'median', 'std'],
+                                    'ethyl_weighted': ['sum']  # 用于计算加权平均
                                 }
                                 
                                 agg_df = df_temp.groupby(existing_group_fields).agg(agg_dict).reset_index()
@@ -214,6 +178,14 @@ if submit_button or st.session_state.liquor_filter_applied:
                                 # 扁平化多级列名
                                 agg_df.columns = ['_'.join(col).strip('_') if col[1] else col[0] 
                                                  for col in agg_df.columns.values]
+                                
+                                # 计算加权平均己酸乙酯
+                                if 'ethyl_weighted_sum' in agg_df.columns and 'quantity_kg_sum' in agg_df.columns:
+                                    agg_df['ethyl_hexanoate_weighted_mean'] = (
+                                        agg_df['ethyl_weighted_sum'] / agg_df['quantity_kg_sum']
+                                    )
+                                    # 删除辅助列
+                                    agg_df.drop(columns=['ethyl_weighted_sum'], inplace=True)
                                 
                                 # 重命名列为中文
                                 rename_dict = {}
@@ -232,12 +204,15 @@ if submit_button or st.session_state.liquor_filter_applied:
                                         }.get(stat, stat)
                                         rename_dict[col] = f"产量_{stat_cn}(Kg)"
                                     elif 'ethyl_hexanoate' in col:
-                                        stat = col.split('_')[-1]
-                                        stat_cn = {
-                                            'mean': '平均值', 'max': '最大值', 'min': '最小值',
-                                            'median': '中位数', 'std': '标准差'
-                                        }.get(stat, stat)
-                                        rename_dict[col] = f"己酸乙酯_{stat_cn}(g/L)"
+                                        if 'weighted_mean' in col:
+                                            rename_dict[col] = "己酸乙酯_加权平均(g/L)"
+                                        else:
+                                            stat = col.split('_')[-1]
+                                            stat_cn = {
+                                                'max': '最大值', 'min': '最小值',
+                                                'median': '中位数', 'std': '标准差'
+                                            }.get(stat, stat)
+                                            rename_dict[col] = f"己酸乙酯_{stat_cn}(g/L)"
                                 
                                 display_df = agg_df.rename(columns=rename_dict)
                                 
@@ -245,22 +220,44 @@ if submit_button or st.session_state.liquor_filter_applied:
                                 # 单一统计方法
                                 selected_method = method_map[agg_method]
                                 
-                                # 对于产量,特殊处理
-                                if selected_method in ['mean', 'max', 'min', 'median', 'std']:
+                                # 根据选择的统计方法构建聚合字典
+                                if selected_method == 'count':
+                                    # 记录次数：只统计记录数
+                                    agg_dict = {
+                                        'production_date': 'count'
+                                    }
+                                elif selected_method == 'mean':
+                                    # 平均值：产量用平均，己酸乙酯用加权平均
+                                    agg_dict = {
+                                        'quantity_kg': 'mean',
+                                        'ethyl_weighted': 'sum',
+                                        'quantity_kg_for_weight': 'sum'  # 用于计算加权平均的分母
+                                    }
+                                    # 添加一个用于加权平均分母的列
+                                    df_temp['quantity_kg_for_weight'] = df_temp['quantity_kg']
+                                elif selected_method in ['max', 'min', 'median', 'std']:
                                     agg_dict = {
                                         'quantity_kg': selected_method,
                                         'ethyl_hexanoate': selected_method
                                     }
                                 else:  # sum
+                                    # 总和：产量求和，己酸乙酯用加权平均
                                     agg_dict = {
                                         'quantity_kg': 'sum',
-                                        'ethyl_hexanoate': 'mean'  # 己酸乙酯用平均值
+                                        'ethyl_weighted': 'sum'
                                     }
                                 
-                                if show_count:
-                                    agg_dict['production_date'] = 'count'
-                                
                                 agg_df = df_temp.groupby(existing_group_fields).agg(agg_dict).reset_index()
+                                
+                                # 如果是平均值或总和，计算加权平均己酸乙酯
+                                if selected_method == 'mean':
+                                    if 'ethyl_weighted' in agg_df.columns and 'quantity_kg_for_weight' in agg_df.columns:
+                                        agg_df['ethyl_hexanoate'] = agg_df['ethyl_weighted'] / agg_df['quantity_kg_for_weight']
+                                        agg_df.drop(columns=['ethyl_weighted', 'quantity_kg_for_weight'], inplace=True)
+                                elif selected_method == 'sum':
+                                    if 'ethyl_weighted' in agg_df.columns and 'quantity_kg' in agg_df.columns:
+                                        agg_df['ethyl_hexanoate'] = agg_df['ethyl_weighted'] / agg_df['quantity_kg']
+                                        agg_df.drop(columns=['ethyl_weighted'], inplace=True)
                                 
                                 # 重命名列
                                 rename_dict = {}
@@ -274,15 +271,15 @@ if submit_button or st.session_state.liquor_filter_applied:
                                     elif col == 'quantity_kg':
                                         rename_dict[col] = f"产量_{agg_method}(Kg)"
                                     elif col == 'ethyl_hexanoate':
-                                        if selected_method == 'sum':
-                                            rename_dict[col] = "己酸乙酯_平均值(g/L)"
+                                        if selected_method in ['mean', 'sum']:
+                                            rename_dict[col] = "己酸乙酯_加权平均(g/L)"
                                         else:
                                             rename_dict[col] = f"己酸乙酯_{agg_method}(g/L)"
                                     elif col == 'production_date':
                                         rename_dict[col] = "记录次数"
                                 
                                 display_df = agg_df.rename(columns=rename_dict)
-                            
+                                                       
                             # 排序
                             if not display_df.empty:
                                 # 按第一个维度排序
@@ -293,51 +290,102 @@ if submit_button or st.session_state.liquor_filter_applied:
                                         break
                                 if first_dim_cn and first_dim_cn in display_df.columns:
                                     display_df = display_df.sort_values(first_dim_cn)
+                                
+                                # 格式化数值列：平均值和标准差保留两位小数
+                                for col in display_df.columns:
+                                    if ('平均值' in col or '标准差' in col or '加权平均' in col) and ('产量' in col or '己酸乙酯' in col):
+                                        display_df[col] = display_df[col].round(2)
                         
                         except Exception as e:
                             st.error(f"汇总数据失败: {str(e)}")
                             display_df = pd.DataFrame()
                     
                 else:  # 完整数据
-                    # 在完整数据模式下，提供额外列的显示选项
-                    optional_columns_en = ['fiscal_year', 'work_year', 'workshop', 'team_name']
-                    optional_columns_cn = [column_names_cn.get(col, col) for col in optional_columns_en if col in df.columns]
+                    # 数据筛选选项
+                    col_filter1, col_filter2, col_filter3 = st.columns(3)
                     
-                    show_extra_cols = []
-                    if optional_columns_cn:
-                        # 添加列显示控制选项
-                        with st.expander("⚙️ 显示额外列", expanded=False):
-                            show_extra_cols = st.multiselect(
-                                "选择要显示的额外列",
-                                options=optional_columns_cn,
-                                default=[],  # 默认不显示任何额外列
-                                help="这些列默认隐藏，可根据需要选择显示",
-                                key="complete_extra_cols"
+                    with col_filter1:
+                        # 段次筛选
+                        segment_filter = st.selectbox(
+                            "段次筛选",
+                            ["全部", "一段", "二段"],
+                            key="segment_filter",
+                            help="选择要显示的段次数据"
+                        )
+                    
+                    with col_filter2:
+                        # 获取产量范围
+                        if 'quantity_kg' in df.columns:
+                            min_quantity = float(df['quantity_kg'].min())
+                            max_quantity = float(df['quantity_kg'].max())
+                            
+                            # 产量范围筛选（使用滑块）
+                            quantity_range = st.slider(
+                                "产量范围筛选 (kg)",
+                                min_value=min_quantity,
+                                max_value=max_quantity,
+                                value=(min_quantity, max_quantity),
+                                step=1.0,
+                                key="quantity_range_slider",
+                                help="拖动滑块选择产量范围"
                             )
+                        else:
+                            quantity_range = None
                     
-                    # 先确定要显示的英文列名
-                    # 核心列的英文名
-                    core_columns_en = ['production_date', 'round_number', 'pit_no', 'segment_name', 'quantity_kg', 'ethyl_hexanoate']
-                    display_columns_en = [col for col in core_columns_en if col in df.columns]
+                    with col_filter3:
+                        # 获取己酸乙酯范围
+                        if 'ethyl_hexanoate' in df.columns:
+                            min_ethyl = float(df['ethyl_hexanoate'].min())
+                            max_ethyl = float(df['ethyl_hexanoate'].max())
+                            
+                            # 己酸乙酯范围筛选（使用滑块）
+                            ethyl_range = st.slider(
+                                "己酸乙酯范围筛选 (g/L)",
+                                min_value=min_ethyl,
+                                max_value=max_ethyl,
+                                value=(min_ethyl, max_ethyl),
+                                step=0.01,
+                                key="ethyl_range_slider",
+                                help="拖动滑块选择己酸乙酯范围"
+                            )
+                        else:
+                            ethyl_range = None
                     
-                    # 添加用户选择的可选列（转换回英文）
-                    if show_extra_cols:
-                        cn_to_en = {v: k for k, v in column_names_cn.items()}
-                        for cn_col in show_extra_cols:
-                            en_col = cn_to_en.get(cn_col)
-                            if en_col and en_col in df.columns and en_col not in display_columns_en:
-                                display_columns_en.append(en_col)
+                    # 应用筛选条件
+                    filtered_df = df.copy()
+                    
+                    # 应用段次筛选
+                    if segment_filter != "全部":
+                        if 'segment_name' in filtered_df.columns:
+                            filtered_df = filtered_df[filtered_df['segment_name'] == segment_filter]
+                    
+                    # 应用产量范围筛选
+                    if quantity_range is not None and 'quantity_kg' in filtered_df.columns:
+                        filtered_df = filtered_df[
+                            (filtered_df['quantity_kg'] >= quantity_range[0]) & 
+                            (filtered_df['quantity_kg'] <= quantity_range[1])
+                        ]
+                    
+                    # 应用己酸乙酯范围筛选
+                    if ethyl_range is not None and 'ethyl_hexanoate' in filtered_df.columns:
+                        filtered_df = filtered_df[
+                            (filtered_df['ethyl_hexanoate'] >= ethyl_range[0]) & 
+                            (filtered_df['ethyl_hexanoate'] <= ethyl_range[1])
+                        ]
+                    
+                    # 核心列的英文名（调整顺序：生产日期、班组、轮次、窖池、段次、产量、己酸乙酯）
+                    core_columns_en = ['production_date', 'team_name', 'round_number', 'pit_no', 'segment_name', 'quantity_kg', 'ethyl_hexanoate']
+                    display_columns_en = [col for col in core_columns_en if col in filtered_df.columns]
                     
                     # 选择列并翻译
-                    display_df = df[display_columns_en].copy()
+                    display_df = filtered_df[display_columns_en].copy()
                     display_df.rename(columns=column_names_cn, inplace=True)
-
                 
                 # 显示数据表格（使用中文列名）
                 if not display_df.empty:
                     st.dataframe(
                         display_df,
-                        width='stretch',
+                        use_container_width=True,
                         height=500,
                         hide_index=True
                     )

@@ -112,7 +112,7 @@ def get_column_names_cn(table_name):
 
 # 默认隐藏的列（用于完整数据模式）
 DEFAULT_HIDDEN_COLUMNS = {
-    'physicochemical': ['实际年份', '工作年度', '车间', '班组'],
+    'physicochemical': ['实际年份', '工作年度', '车间'],
     'liquor_output': ['实际年份', '工作年度', '车间', '班组'],
     'temperature': ['实际年份', '工作年度', '车间', '班组'],
 }
