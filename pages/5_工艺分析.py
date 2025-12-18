@@ -58,6 +58,9 @@ except Exception as e:
 with st.sidebar:
     filters, submit_button = render_filter_ui(filter_options, sidebar=True)
 
+# 创建主内容区域的占位符
+main_placeholder = st.empty()
+
 # 应用筛选并加载数据
 if submit_button or st.session_state.filter_applied:
     validated_filters = validate_filter_conditions(filters)
@@ -85,13 +88,13 @@ if submit_button or st.session_state.filter_applied:
             else:
                 df = pd.DataFrame()
             
-            if df.empty:
-                st.warning("⚠️ 没有符合条件的数据,请调整筛选条件")
-            else:
-                
-                # ==================== 整体合格率概览 ====================
-                #st.markdown("---")
-                st.markdown("### 📈 整体合格率概览")
+            # 使用占位符渲染内容
+            with main_placeholder.container():
+                if df.empty:
+                    st.warning("⚠️ 没有符合条件的数据,请调整筛选条件")
+                else:
+                    # ==================== 整体合格率概览 ====================
+                    st.markdown("### 📈 整体合格率概览")
                 
                 summary = calculate_qualification_summary(df, standards)
                 

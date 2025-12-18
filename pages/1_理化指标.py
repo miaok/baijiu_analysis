@@ -31,6 +31,17 @@ from utils.aggregation_utils import (
     create_pivot_table,
     format_column_name
 )
+from utils.visualization_utils import (
+    CATEGORICAL_DIMENSIONS,
+    NUMERIC_DIMENSIONS,
+    AGGREGATION_METHODS,
+    CHART_TYPES,
+    get_available_dimensions,
+    prepare_visualization_data,
+    create_chart,
+    validate_chart_config,
+    recommend_chart_type
+)
 
 
 # 页面配置
@@ -83,7 +94,7 @@ if submit_button or st.session_state.filter_applied:
                     # 选择显示模式
                     display_mode = st.radio(
                         "选择显示模式",
-                        ["完整数据", "数据汇总"],
+                        ["完整数据", "数据汇总", "可视化分析"],
                         horizontal=True,
                         label_visibility="collapsed"
                     )
@@ -268,7 +279,7 @@ if submit_button or st.session_state.filter_applied:
                             st.code(traceback.format_exc())
                 
                 # ==================== 完整数据模式 ====================
-                else:
+                elif display_mode == "完整数据":
                     # 使用配置文件中的列名映射
                     column_names_cn = PHYSICOCHEMICAL_COLUMNS_CN
                     
@@ -414,6 +425,240 @@ if submit_button or st.session_state.filter_applied:
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                             width='stretch'
                         )
+
+                # ==================== 可视化分析模式 ====================
+                elif display_mode == "可视化分析":
+                    st.markdown("### 📊 可视化分析")
+                    
+                    # 获取可用维度
+                    available_categorical, available_numeric = get_available_dimensions(df)
+                    
+                    if not available_categorical and not available_numeric:
+                        st.warning("⚠️ 当前数据中没有可用于可视化的维度")
+                    else:
+                        # 创建左右分栏布局
+                        config_col, chart_col = st.columns([3, 7])
+                        
+                        with config_col:
+                            st.markdown("#### ⚙️ 图表配置")
+                            
+                            # 图表类型选择
+                            chart_type_cn = st.selectbox(
+                                "图表类型",
+                                list(CHART_TYPES.keys()),
+                                help="选择要生成的图表类型"
+                            )
+                            chart_type = CHART_TYPES[chart_type_cn]
+                            
+                            st.markdown("---")
+                            
+                            # X轴配置
+                            st.markdown("**X轴配置**")
+                            
+                            # 合并分类和数值维度供X轴选择
+                            all_x_dimensions = {**available_categorical, **available_numeric}
+                            x_dimension_cn = st.selectbox(
+                                "X轴维度",
+                                list(all_x_dimensions.keys()),
+                                help="选择X轴显示的维度"
+                            )
+                            x_dimension = all_x_dimensions[x_dimension_cn]
+                            
+                            # 判断X轴是否为分类维度
+                            x_is_categorical = x_dimension in CATEGORICAL_DIMENSIONS.values()
+                            
+                            # X轴聚合方式（仅数值维度可选）
+                            if not x_is_categorical:
+                                x_agg_cn = st.selectbox(
+                                    "X轴聚合方式",
+                                    list(AGGREGATION_METHODS.keys()),
+                                    help="对X轴数值进行聚合计算"
+                                )
+                                x_agg = AGGREGATION_METHODS[x_agg_cn]
+                            else:
+                                x_agg = None
+                                st.info("ℹ️ X轴为分类维度，无需聚合")
+                            
+                            st.markdown("---")
+                            
+                            # Y轴配置
+                            st.markdown("**Y轴配置**")
+                            
+                            # Y轴通常选择数值维度（但也允许分类维度用于热力图等）
+                            all_y_dimensions = {**available_numeric, **available_categorical}
+                            y_dimension_cn = st.selectbox(
+                                "Y轴维度",
+                                list(all_y_dimensions.keys()),
+                                help="选择Y轴显示的维度"
+                            )
+                            y_dimension = all_y_dimensions[y_dimension_cn]
+                            
+                            # 判断Y轴是否为分类维度
+                            y_is_categorical = y_dimension in CATEGORICAL_DIMENSIONS.values()
+                            
+                            # Y轴聚合方式
+                            if not y_is_categorical:
+                                y_agg_cn = st.selectbox(
+                                    "Y轴聚合方式",
+                                    list(AGGREGATION_METHODS.keys()),
+                                    index=1,  # 默认选择"平均值"
+                                    help="对Y轴数值进行聚合计算"
+                                )
+                                y_agg = AGGREGATION_METHODS[y_agg_cn]
+                            else:
+                                y_agg = None
+                                st.info("ℹ️ Y轴为分类维度，无需聚合")
+                            
+                            st.markdown("---")
+                            
+                            # 分组/颜色维度（可选）
+                            st.markdown("**分组配置（可选）**")
+                            use_color = st.checkbox("启用分组/着色", value=False)
+                            
+                            if use_color:
+                                # 分组维度通常选择分类维度
+                                color_dimension_cn = st.selectbox(
+                                    "分组维度",
+                                    ["无"] + list(available_categorical.keys()),
+                                    help="按此维度进行分组显示"
+                                )
+                                
+                                if color_dimension_cn != "无":
+                                    color_dimension = available_categorical[color_dimension_cn]
+                                else:
+                                    color_dimension = None
+                            else:
+                                color_dimension = None
+                                color_dimension_cn = None
+                            
+                            st.markdown("---")
+                            
+                            # 生成按钮
+                            generate_button = st.button("🎨 生成图表", type="primary", use_container_width=True)
+                        
+                        with chart_col:
+                            if generate_button:
+                                # 验证配置
+                                is_valid, error_msg = validate_chart_config(
+                                    chart_type,
+                                    x_dimension,
+                                    y_dimension,
+                                    x_agg,
+                                    y_agg
+                                )
+                                
+                                if not is_valid:
+                                    st.error(f"❌ 配置错误: {error_msg}")
+                                else:
+                                    if error_msg:  # 有警告信息
+                                        st.warning(f"⚠️ {error_msg}")
+                                    
+                                    try:
+                                        # 准备数据
+                                        viz_data = prepare_visualization_data(
+                                            df,
+                                            x_dimension,
+                                            y_dimension,
+                                            x_agg,
+                                            y_agg,
+                                            color_dimension
+                                        )
+                                        
+                                        if viz_data.empty:
+                                            st.warning("⚠️ 没有可用于绘图的数据，请检查筛选条件或维度选择")
+                                        else:
+                                            # 构建图表标题
+                                            title_parts = []
+                                            if y_agg:
+                                                title_parts.append(f"{y_dimension_cn}的{y_agg_cn}")
+                                            else:
+                                                title_parts.append(y_dimension_cn)
+                                            
+                                            if x_agg:
+                                                title_parts.append(f"vs {x_dimension_cn}的{x_agg_cn}")
+                                            else:
+                                                title_parts.append(f"vs {x_dimension_cn}")
+                                            
+                                            chart_title = " ".join(title_parts)
+                                            
+                                            # 创建图表
+                                            fig = create_chart(
+                                                chart_type,
+                                                viz_data,
+                                                x_dimension,
+                                                y_dimension,
+                                                x_dimension_cn,
+                                                y_dimension_cn,
+                                                color_dimension,
+                                                color_dimension_cn,
+                                                chart_title
+                                            )
+                                            
+                                            # 显示图表
+                                            st.plotly_chart(fig, use_container_width=True)
+                                            
+                                            # 显示数据预览
+                                            with st.expander("📋 查看图表数据", expanded=False):
+                                                # 准备显示用的列名映射
+                                                display_data = viz_data.copy()
+                                                
+                                                # 重命名列为中文
+                                                rename_map = {}
+                                                if x_dimension in display_data.columns:
+                                                    rename_map[x_dimension] = x_dimension_cn
+                                                if y_dimension in display_data.columns:
+                                                    rename_map[y_dimension] = y_dimension_cn
+                                                if color_dimension and color_dimension in display_data.columns:
+                                                    rename_map[color_dimension] = color_dimension_cn
+                                                
+                                                display_data.rename(columns=rename_map, inplace=True)
+                                                
+                                                st.dataframe(
+                                                    display_data,
+                                                    use_container_width=True,
+                                                    hide_index=True
+                                                )
+                                            
+                                            # 图表导出
+                                            st.markdown("---")
+                                            export_col1, export_col2 = st.columns(2)
+                                            
+                                            with export_col1:
+                                                # 导出图表为HTML
+                                                html_buffer = fig.to_html(include_plotlyjs='cdn')
+                                                st.download_button(
+                                                    label="📥 导出图表 (HTML)",
+                                                    data=html_buffer,
+                                                    file_name=f"理化指标可视化_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
+                                                    mime="text/html"
+                                                )
+                                            
+                                            with export_col2:
+                                                # 导出数据为CSV
+                                                csv = viz_data.to_csv(index=False, encoding='utf-8-sig')
+                                                st.download_button(
+                                                    label="📥 导出数据 (CSV)",
+                                                    data=csv,
+                                                    file_name=f"理化指标可视化数据_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                                                    mime="text/csv"
+                                                )
+                                    
+                                    except Exception as e:
+                                        st.error(f"❌ 生成图表失败: {str(e)}")
+                                        import traceback
+                                        with st.expander("查看错误详情"):
+                                            st.code(traceback.format_exc())
+                            else:
+                                # 显示提示信息
+                                st.info("👈 请在左侧配置图表参数,然后点击【生成图表】按钮")
+                                
+                                # 显示推荐的图表类型
+                                has_agg = (x_agg is not None) or (y_agg is not None)
+                                recommended = recommend_chart_type(x_is_categorical, y_is_categorical, has_agg)
+                                
+                                if recommended:
+                                    st.markdown("**💡 推荐的图表类型：**")
+                                    st.write("、".join(recommended))
 
                 
         except Exception as e:

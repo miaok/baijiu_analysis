@@ -53,6 +53,9 @@ except Exception as e:
 with st.sidebar:
     filters, submit_button = render_filter_ui(filter_options, sidebar=True)
 
+# 创建主内容区域的占位符
+main_placeholder = st.empty()
+
 # ==================== 应用筛选并加载数据 ====================
 if submit_button or st.session_state.filter_applied:
     # 验证筛选条件（filters已经由render_filter_ui返回）
@@ -66,26 +69,202 @@ if submit_button or st.session_state.filter_applied:
         try:
             df = get_temperature_data(validated_filters if validated_filters else None)
             
-            if df.empty:
-                st.warning("⚠️ 没有符合条件的数据，请调整筛选条件")
-            else:
-                
-                # 数据展示（主区域）
-                st.markdown("---")
-                st.subheader("📊 温度数据")
-                
-                # 选择显示模式
-                display_mode = st.radio(
-                    "选择显示模式",
-                    ["工艺参数", "温度曲线"],
-                    horizontal=True,
-                    label_visibility="collapsed"
-                )
+            # 使用占位符渲染内容
+            with main_placeholder.container():
+                if df.empty:
+                    st.warning("⚠️ 没有符合条件的数据，请调整筛选条件")
+                else:
+                    # 数据展示（主区域）
+                    st.markdown("---")
+                    st.subheader("🌡️ 温度参数分析")
+                    
+                    # 选择显示模式
+                    display_mode = st.radio(
+                        "选择显示模式",
+                        ["工艺参数", "数据汇总", "温度曲线"],
+                        horizontal=True,
+                        label_visibility="collapsed"
+                    )
                 
                 # 使用配置文件中的列名映射
                 column_names_cn = TEMPERATURE_COLUMNS_CN
                 
-                if display_mode == "工艺参数":
+                # 根据显示模式处理数据
+                if display_mode == "数据汇总":
+                    # ==================== 数据汇总模式 ====================
+                  
+                    # 汇总维度和统计方法选择
+                    col1, col2, col3, col4 = st.columns([2, 2, 2, 1.5])
+                    
+                    with col1:
+                        # 主要汇总维度
+                        primary_dimension = st.selectbox(
+                            "主要汇总维度",
+                            ["车间", "班组", "窖池", "轮次"],
+                            key="temp_primary_dimension"
+                        )
+                    
+                    with col2:
+                        # 次要汇总维度(可选) - 动态排除主要维度
+                        available_secondary = ["无"] + [d for d in ["车间", "班组", "窖池", "轮次"] if d != primary_dimension]
+                        secondary_dimension = st.selectbox(
+                            "次要汇总维度(可选)",
+                            available_secondary,
+                            key="temp_secondary_dimension"
+                        )
+                    
+                    with col3:
+                        # 统计方法（添加记录次数）
+                        agg_method = st.selectbox(
+                            "统计方法",
+                            ["平均值", "最大值", "最小值", "中位数", "标准差", "总和", "记录次数"],
+                            key="temp_agg_method"
+                        )
+                    
+                    with col4:
+                        # 显示全部统计指标
+                        show_all_stats = st.checkbox(
+                            "显示全部统计指标", 
+                            value=False, 
+                            key="show_all_stats_temp",
+                            help="显示所有统计指标(平均值、最大值、最小值等)"
+                        )
+                    
+                    # 维度映射
+                    dimension_map = {
+                        "车间": "workshop",
+                        "班组": "team_name",
+                        "窖池": "pit_no",
+                        "轮次": "round_number"
+                    }
+                    
+                    # 统计方法映射
+                    method_map = {
+                        "平均值": "mean",
+                        "最大值": "max",
+                        "最小值": "min",
+                        "中位数": "median",
+                        "标准差": "std",
+                        "总和": "sum",
+                        "记录次数": "count"
+                    }
+                    
+                    # 构建分组字段列表
+                    group_by_fields = [dimension_map[primary_dimension]]
+                    if secondary_dimension != "无":
+                        group_by_fields.append(dimension_map[secondary_dimension])
+                    
+                    # 检查字段是否存在
+                    existing_group_fields = [f for f in group_by_fields if f in df.columns]
+                    
+                    if not existing_group_fields:
+                        st.warning("⚠️ 选择的汇总维度在当前数据中不存在")
+                        display_df = pd.DataFrame()
+                    else:
+                        try:
+                            # 准备数据
+                            df_temp = df.copy()
+                            
+                            # 定义需要汇总的温度指标字段
+                            temp_indicator_fields = [
+                                'temp_peak', 'days_to_peak', 'peak_duration', 
+                                'temp_rise_range', 'temp_end',
+                                'starter_activation_temp', 'grains_entry_temp', 'distillation_temp'
+                            ]
+                            
+                            # 过滤出存在的指标字段
+                            existing_indicator_fields = [f for f in temp_indicator_fields if f in df_temp.columns]
+                            
+                            if show_all_stats:
+                                # 显示全部统计指标
+                                agg_dict = {}
+                                for field in existing_indicator_fields:
+                                    agg_dict[field] = ['mean', 'max', 'min', 'median', 'std', 'count']
+                                
+                                agg_df = df_temp.groupby(existing_group_fields).agg(agg_dict).reset_index()
+                                
+                                # 扁平化多级列名
+                                agg_df.columns = ['_'.join(col).strip('_') if col[1] else col[0] 
+                                                 for col in agg_df.columns.values]
+                                
+                                # 重命名列为中文
+                                rename_dict = {}
+                                for col in agg_df.columns:
+                                    if col in existing_group_fields:
+                                        # 维度列
+                                        for cn, en in dimension_map.items():
+                                            if en == col:
+                                                rename_dict[col] = cn
+                                                break
+                                    else:
+                                        # 指标列 - 格式: field_stat
+                                        parts = col.rsplit('_', 1)
+                                        if len(parts) == 2:
+                                            field_name, stat = parts
+                                            # 获取中文字段名
+                                            field_cn = column_names_cn.get(field_name, field_name)
+                                            # 获取中文统计方法名
+                                            stat_cn = {
+                                                'mean': '平均值', 'max': '最大值', 'min': '最小值',
+                                                'median': '中位数', 'std': '标准差', 'count': '次数'
+                                            }.get(stat, stat)
+                                            rename_dict[col] = f"{field_cn}_{stat_cn}"
+                                
+                                display_df = agg_df.rename(columns=rename_dict)
+                                
+                            else:
+                                # 单一统计方法
+                                selected_method = method_map[agg_method]
+                                
+                                # 根据选择的统计方法构建聚合字典
+                                if selected_method == 'count':
+                                    # 记录次数：只统计记录数
+                                    agg_dict = {
+                                        'production_date': 'count'
+                                    }
+                                else:
+                                    agg_dict = {field: selected_method for field in existing_indicator_fields}
+                                
+                                agg_df = df_temp.groupby(existing_group_fields).agg(agg_dict).reset_index()
+                                
+                                # 重命名列
+                                rename_dict = {}
+                                for col in agg_df.columns:
+                                    if col in existing_group_fields:
+                                        # 维度列
+                                        for cn, en in dimension_map.items():
+                                            if en == col:
+                                                rename_dict[col] = cn
+                                                break
+                                    elif col == 'production_date':
+                                        rename_dict[col] = "记录次数"
+                                    elif col in existing_indicator_fields:
+                                        field_cn = column_names_cn.get(col, col)
+                                        rename_dict[col] = f"{field_cn}_{agg_method}"
+                                
+                                display_df = agg_df.rename(columns=rename_dict)
+                                                   
+                            # 排序
+                            if not display_df.empty:
+                                # 按第一个维度排序
+                                first_dim_cn = None
+                                for cn, en in dimension_map.items():
+                                    if en == existing_group_fields[0]:
+                                        first_dim_cn = cn
+                                        break
+                                if first_dim_cn and first_dim_cn in display_df.columns:
+                                    display_df = display_df.sort_values(first_dim_cn)
+                                
+                                # 格式化数值列：平均值和标准差保留两位小数
+                                for col in display_df.columns:
+                                    if ('平均值' in col or '标准差' in col or '中位数' in col) and display_df[col].dtype in ['float64', 'float32']:
+                                        display_df[col] = display_df[col].round(2)
+                        
+                        except Exception as e:
+                            st.error(f"汇总数据失败: {str(e)}")
+                            display_df = pd.DataFrame()
+                
+                elif display_mode == "工艺参数":
                     # 表格模式：显示工艺参数
                     
                     # 核心列的英文名（调整顺序：生产日期、班组、轮次、窖池、工艺参数）
@@ -99,44 +278,6 @@ if submit_button or st.session_state.filter_applied:
                     # 选择列并翻译
                     display_df = df[display_columns_en].copy()
                     display_df.rename(columns=column_names_cn, inplace=True)
-                    
-                    # 显示数据表格（使用中文列名）
-                    st.dataframe(
-                        display_df,
-                        use_container_width=True,
-                        height=500,
-                        hide_index=True
-                    )
-                    
-                    # 数据导出
-                    st.markdown("---")
-                    col_export1, col_export2, col_export3 = st.columns([1, 1, 2])
-                    
-                    with col_export1:
-                        # 导出为CSV（使用中文列名）
-                        csv = display_df.to_csv(index=False, encoding='utf-8-sig')
-                        st.download_button(
-                            label="📥 导出为 CSV",
-                            data=csv,
-                            file_name=f"温度数据_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                            mime="text/csv",
-                            width='stretch'
-                        )
-                    
-                    with col_export2:
-                        # 导出为Excel（使用中文列名）
-                        output = BytesIO()
-                        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                            display_df.to_excel(writer, index=False, sheet_name='温度数据')
-                        output.seek(0)
-                        
-                        st.download_button(
-                            label="📥 导出为 Excel",
-                            data=output,
-                            file_name=f"温度数据_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            width='stretch'
-                        )
                 
                 else:  # 温度曲线模式
                     # st.markdown("### 🌡️ 发酵温度曲线")
@@ -345,6 +486,47 @@ if submit_button or st.session_state.filter_applied:
                                         st.markdown("---")
                         else:
                             st.info("请至少选择一个窖池任务")
+                
+                # ==================== 数据展示和导出（工艺参数和数据汇总模式） ====================
+                if display_mode in ["工艺参数", "数据汇总"]:
+                    # 显示数据表格（使用中文列名）
+                    if 'display_df' in locals() and not display_df.empty:
+                        st.dataframe(
+                            display_df,
+                            use_container_width=True,
+                            height=500,
+                            hide_index=True
+                        )
+                        
+                        # 数据导出
+                        st.markdown("---")
+                        col_export1, col_export2, col_export3 = st.columns([1, 1, 2])
+                        
+                        with col_export1:
+                            # 导出为CSV（使用中文列名）
+                            csv = display_df.to_csv(index=False, encoding='utf-8-sig')
+                            st.download_button(
+                                label="📥 导出为 CSV",
+                                data=csv,
+                                file_name=f"温度数据_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                                mime="text/csv",
+                                use_container_width=True
+                            )
+                        
+                        with col_export2:
+                            # 导出为Excel（使用中文列名）
+                            output = BytesIO()
+                            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                                display_df.to_excel(writer, index=False, sheet_name='温度数据')
+                            output.seek(0)
+                            
+                            st.download_button(
+                                label="📥 导出为 Excel",
+                                data=output,
+                                file_name=f"温度数据_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                use_container_width=True
+                            )
                 
         except Exception as e:
             st.error(f"❌ 加载数据失败: {str(e)}")

@@ -51,6 +51,9 @@ except Exception as e:
 with st.sidebar:
     filters, submit_button = render_filter_ui(filter_options, sidebar=True)
 
+# 创建主内容区域的占位符
+main_placeholder = st.empty()
+
 # ==================== 应用筛选并加载数据 ====================
 if submit_button or st.session_state.filter_applied:
     # 验证筛选条件（filters已经由render_filter_ui返回）
@@ -64,21 +67,22 @@ if submit_button or st.session_state.filter_applied:
         try:
             df = get_liquor_output_data(validated_filters if validated_filters else None)
             
-            if df.empty:
-                st.warning("⚠️ 没有符合条件的数据，请调整筛选条件")
-            else:
-                
-                # 数据表格展示(主区域)
-                st.markdown("---")
-                st.subheader("📊 原酒产出数据")
-                
-                # 选择显示模式
-                display_mode = st.radio(
-                    "选择显示模式",
-                    ["完整数据", "数据汇总"],
-                    horizontal=True,
-                    label_visibility="collapsed"
-                )
+            # 使用占位符渲染内容
+            with main_placeholder.container():
+                if df.empty:
+                    st.warning("⚠️ 没有符合条件的数据，请调整筛选条件")
+                else:
+                    # 数据表格展示(主区域)
+                    st.markdown("---")
+                    st.subheader("📊 原酒指标分析")
+                    
+                    # 选择显示模式
+                    display_mode = st.radio(
+                        "选择显示模式",
+                        ["完整数据", "数据汇总"],
+                        horizontal=True,
+                        label_visibility="collapsed"
+                    )
                 
                 # 使用配置文件中的列名映射
                 column_names_cn = LIQUOR_OUTPUT_COLUMNS_CN
